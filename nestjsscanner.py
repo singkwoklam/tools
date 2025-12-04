@@ -4,14 +4,13 @@ import ipaddress
 import concurrent.futures
 import csv
 import sys
-from tqdm import tqdm
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ===========================
 # CONFIG
 # ===========================
-TIMEOUT = 3
+TIMEOUT = 1
 THREADS = 50
 CSV_FILE = "nextjs_detected.csv"
 
@@ -40,7 +39,7 @@ def scan_ip(ip):
 
         if hits:
             result["details"] = "; ".join(hits)
-            return result   # Detected
+            return result   # DETECTED
         else:
             return None
 
@@ -50,7 +49,8 @@ def scan_ip(ip):
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python3 scan.py <CIDR>\nExample: python3 scan.py 192.168.1.0/24")
+        print("Usage: python3 scan.py <CIDR>")
+        print("Example: python3 scan.py 192.168.1.0/24")
         sys.exit(1)
 
     CIDR = sys.argv[1]
@@ -61,27 +61,32 @@ def main():
     ips = [str(ip) for ip in network.hosts()]
 
     detections = []
+    total = len(ips)
+    completed = 0
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=THREADS) as executor:
-        results = list(tqdm(executor.map(scan_ip, ips), total=len(ips), desc="Scanning"))
+        for res in executor.map(scan_ip, ips):
+            completed += 1
+            print(f"\rProgress: {completed}/{total}", end="")  # simple progress bar
 
-        for res in results:
-            if res is not None:  # Only detections
+            if res is not None:  # DETECTED
                 detections.append(res)
                 print(f"\n⚠️  DETECTED: {res['ip']}")
                 print(f"    → {res['details']}")
 
+    print("\n")
+
     # export detected only
     if detections:
-        print(f"\n[+] Exporting detections to {CSV_FILE} ...")
+        print(f"[+] Exporting detections to {CSV_FILE} ...")
         with open(CSV_FILE, "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=["ip", "details"])
             writer.writeheader()
             for row in detections:
                 writer.writerow(row)
-        print("[✔] CSV export complete.\n")
+        print("[✔] CSV export complete.")
     else:
-        print("\n✔ No Next.js detected in this CIDR.\n")
+        print("✔ No Next.js detected in this CIDR.")
 
 
 if __name__ == "__main__":
